@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Watch Later Organizer",
+  "version": "1.0.0",
+  "description": "Watch Laterの動画をルールに従って既存のプレイリストに整理します",
+  "permissions": ["identity", "storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content/youtube.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "oauth2": {
+    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/youtube"]
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

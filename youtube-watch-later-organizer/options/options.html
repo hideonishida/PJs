@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>WL Organizer – ルール設定</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+
+  <div class="container">
+
+    <header class="page-header">
+      <span class="logo">▶</span>
+      <h1>Watch Later Organizer</h1>
+      <span class="subtitle">自動整理ルール設定</span>
+    </header>
+
+    <!-- 追加フォーム -->
+    <section class="card">
+      <h2 class="card-title">ルールを追加</h2>
+
+      <div class="form-grid">
+        <div class="form-row">
+          <label class="label">条件フィールド</label>
+          <select id="rule-field" class="select">
+            <option value="channelName">チャンネル名</option>
+            <option value="title">タイトル</option>
+            <option value="duration">動画時間</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label class="label">演算子</label>
+          <select id="rule-operator" class="select">
+            <option value="contains">含む</option>
+            <option value="equals">完全一致</option>
+            <option value="startsWith">で始まる</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label id="rule-value-label" class="label">値</label>
+          <input id="rule-value" type="text" class="input" placeholder="例: TED, 料理, 30" />
+        </div>
+
+        <div class="form-row">
+          <label class="label">移動先プレイリスト</label>
+          <select id="rule-target-playlist" class="select">
+            <option value="">読み込み中...</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="form-message" class="form-message"></div>
+
+      <button id="add-rule-btn" class="btn btn-primary">ルールを追加</button>
+    </section>
+
+    <!-- ルール一覧 -->
+    <section class="card">
+      <div class="card-title-row">
+        <h2 class="card-title">登録済みルール</h2>
+        <span id="rule-total" class="badge-count">0 件</span>
+      </div>
+
+      <p class="hint">ルールは上から順に評価されます。最初にマッチしたルールが適用されます。</p>
+
+      <div id="rules-list" class="rules-list">
+        <div class="empty-state">ルールがありません</div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

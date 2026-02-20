@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WL Organizer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- ログイン画面 -->
+  <div id="login-section" class="section">
+    <div class="login-logo">▶</div>
+    <h2 class="login-title">Watch Later Organizer</h2>
+    <p class="login-desc">YouTube アカウントにログインして<br>Watch Later を整理しましょう</p>
+    <button id="login-btn" class="btn btn-primary btn-full">Google でログイン</button>
+  </div>
+
+  <!-- メイン画面 -->
+  <div id="main-section" class="section hidden">
+
+    <!-- ヘッダー -->
+    <header class="header">
+      <span class="header-title">▶ WL Organizer</span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">ログアウト</button>
+    </header>
+
+    <!-- タブ -->
+    <div class="tabs">
+      <button id="tab-manual" class="tab active">手動</button>
+      <button id="tab-auto" class="tab">自動</button>
+    </div>
+
+    <!-- ローカルロードバー -->
+    <div id="load-bar" class="load-bar">
+      <button id="load-btn" class="btn btn-secondary btn-sm">Watch Later を読み込む</button>
+      <span id="video-count-badge" class="badge hidden"></span>
+      <button id="open-wl-btn" class="btn btn-ghost btn-sm hidden">WLページを開く</button>
+    </div>
+
+    <!-- ────── 手動パネル ────── -->
+    <div id="manual-panel" class="panel">
+      <div class="list-header">
+        <label class="checkbox-label">
+          <input type="checkbox" id="select-all" />
+          <span>すべて選択</span>
+        </label>
+        <span id="selected-count" class="muted"></span>
+      </div>
+      <div id="video-list" class="video-list scrollable">
+        <div class="empty-state">Watch Later を読み込んでください</div>
+      </div>
+      <div class="action-bar">
+        <select id="target-playlist" class="select">
+          <option value="">移動先プレイリスト...</option>
+        </select>
+        <label class="checkbox-label">
+          <input type="checkbox" id="remove-from-wl" checked />
+          <span>WL から削除</span>
+        </label>
+        <button id="move-btn" class="btn btn-primary btn-full" disabled>移動</button>
+      </div>
+    </div>
+
+    <!-- ────── 自動パネル ────── -->
+    <div id="auto-panel" class="panel hidden">
+      <div class="auto-info">
+        <span id="rule-count-label" class="muted">ルール: 読み込み中...</span>
+        <button id="open-options-btn" class="btn btn-ghost btn-sm">ルール設定</button>
+      </div>
+      <button id="preview-btn" class="btn btn-secondary btn-full">プレビューを表示</button>
+      <div id="preview-list" class="preview-list scrollable"></div>
+      <div class="action-bar">
+        <label class="checkbox-label">
+          <input type="checkbox" id="remove-from-wl-auto" checked />
+          <span>WL から削除</span>
+        </label>
+        <button id="execute-btn" class="btn btn-primary btn-full" disabled>整理を実行</button>
+      </div>
+    </div>
+
+    <!-- ステータスバー -->
+    <div id="status" class="status"></div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

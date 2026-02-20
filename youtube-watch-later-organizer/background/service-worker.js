@@ -1,0 +1,284 @@
+const API_BASE = 'https://www.googleapis.com/youtube/v3';
+
+// ─────────────────────────────────────────
+// OAuth
+// ─────────────────────────────────────────
+
+function getAuthToken(interactive = false) {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive }, (token) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(token);
+      }
+    });
+  });
+}
+
+function removeCachedToken(token) {
+  return new Promise((resolve) => {
+    chrome.identity.removeCachedAuthToken({ token }, resolve);
+  });
+}
+
+// ─────────────────────────────────────────
+// YouTube API helper
+// ─────────────────────────────────────────
+
+async function youtubeAPI(endpoint, method = 'GET', params = {}, body = null) {
+  const token = await getAuthToken(true);
+  let url = `${API_BASE}/${endpoint}`;
+
+  if (method === 'GET' && Object.keys(params).length > 0) {
+    url += '?' + new URLSearchParams(params).toString();
+  }
+
+  const options = {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  };
+  if (body) options.body = JSON.stringify(body);
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${response.status}`);
+  }
+  if (method === 'DELETE') return null;
+  return response.json();
+}
+
+// ─────────────────────────────────────────
+// Playlist operations
+// ─────────────────────────────────────────
+
+async function getUserPlaylists() {
+  let items = [];
+  let pageToken = null;
+
+  do {
+    const params = {
+      part: 'snippet',
+      mine: true,
+      maxResults: 50,
+      ...(pageToken && { pageToken }),
+    };
+    const data = await youtubeAPI('playlists', 'GET', params);
+    items = items.concat(data.items);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  // WL と HL (履歴) を除外
+  return items.filter((item) => item.id !== 'WL' && item.id !== 'HL');
+}
+
+async function addToPlaylist(videoId, playlistId) {
+  return youtubeAPI('playlistItems', 'POST', {}, {
+    snippet: {
+      playlistId,
+      resourceId: { kind: 'youtube#video', videoId },
+    },
+  });
+}
+
+async function removeFromWatchLater(playlistItemId) {
+  return youtubeAPI('playlistItems', 'DELETE', { id: playlistItemId });
+}
+
+/** Watch Later 内の動画の playlistItemId を取得（API が対応している場合のみ成功） */
+async function getWLPlaylistItemId(videoId) {
+  try {
+    const data = await youtubeAPI('playlistItems', 'GET', {
+      part: 'id',
+      playlistId: 'WL',
+      videoId,
+    });
+    return data.items?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────
+// Rules
+// ─────────────────────────────────────────
+
+function getRules() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(['rules'], (result) => resolve(result.rules || []));
+  });
+}
+
+/**
+ * 動画にマッチする最初のルールを返す。なければ null。
+ * @param {{ title: string, channelName: string, durationSeconds: number }} video
+ * @param {Array} rules
+ */
+function evaluateRules(video, rules) {
+  for (const rule of rules) {
+    if (!rule.enabled) continue;
+
+    const { field, operator, value } = rule.condition;
+    let fieldValue;
+
+    switch (field) {
+      case 'channelName':
+        fieldValue = (video.channelName ?? '').toLowerCase();
+        break;
+      case 'title':
+        fieldValue = (video.title ?? '').toLowerCase();
+        break;
+      case 'duration':
+        fieldValue = video.durationSeconds ?? 0;
+        break;
+      default:
+        continue;
+    }
+
+    let matches = false;
+    if (field === 'duration') {
+      const num = parseInt(value, 10) * 60; // 分 → 秒
+      if (operator === 'gt') matches = fieldValue > num;
+      else if (operator === 'lt') matches = fieldValue < num;
+      else if (operator === 'eq') matches = fieldValue === num;
+    } else {
+      const lv = value.toLowerCase();
+      if (operator === 'contains') matches = fieldValue.includes(lv);
+      else if (operator === 'equals') matches = fieldValue === lv;
+      else if (operator === 'startsWith') matches = fieldValue.startsWith(lv);
+    }
+
+    if (matches) {
+      return {
+        targetPlaylistId: rule.targetPlaylistId,
+        targetPlaylistName: rule.targetPlaylistName,
+        ruleId: rule.id,
+      };
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────
+// Move videos
+// ─────────────────────────────────────────
+
+/**
+ * 動画を対象プレイリストに追加し、必要なら WL から削除する。
+ * @param {{ videoId, playlistItemId?, targetPlaylistId }} video
+ * @param {boolean} removeFromWL
+ */
+async function moveVideo(video, removeFromWL) {
+  await addToPlaylist(video.videoId, video.targetPlaylistId);
+
+  if (!removeFromWL) {
+    return { videoId: video.videoId, success: true, wlRemoved: false };
+  }
+
+  // playlistItemId が既知であれば API で削除
+  let itemId = video.playlistItemId ?? null;
+  if (!itemId) {
+    itemId = await getWLPlaylistItemId(video.videoId);
+  }
+
+  if (itemId) {
+    await removeFromWatchLater(itemId);
+    return { videoId: video.videoId, success: true, wlRemoved: true };
+  }
+
+  // API での WL 削除が不可能 → Content Script 経由で削除する必要あり
+  return {
+    videoId: video.videoId,
+    success: true,
+    wlRemoved: false,
+    needsContentScript: true,
+  };
+}
+
+// ─────────────────────────────────────────
+// Message handler
+// ─────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      switch (message.type) {
+        case 'GET_AUTH_STATUS': {
+          try {
+            await getAuthToken(false);
+            sendResponse({ success: true, authenticated: true });
+          } catch {
+            sendResponse({ success: true, authenticated: false });
+          }
+          break;
+        }
+
+        case 'LOGIN': {
+          await getAuthToken(true);
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'LOGOUT': {
+          try {
+            const token = await getAuthToken(false);
+            await removeCachedToken(token);
+          } catch {
+            // 既にトークンなし
+          }
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'GET_PLAYLISTS': {
+          const playlists = await getUserPlaylists();
+          sendResponse({ success: true, playlists });
+          break;
+        }
+
+        case 'PREVIEW_AUTO': {
+          const rules = await getRules();
+          const preview = message.videos.map((video) => ({
+            ...video,
+            match: evaluateRules(video, rules),
+          }));
+          sendResponse({ success: true, preview });
+          break;
+        }
+
+        case 'MOVE_VIDEOS': {
+          const { videos, removeFromWL } = message;
+          const results = [];
+
+          for (const video of videos) {
+            try {
+              const result = await moveVideo(video, removeFromWL);
+              results.push(result);
+            } catch (error) {
+              results.push({
+                videoId: video.videoId,
+                success: false,
+                error: error.message,
+              });
+            }
+          }
+
+          sendResponse({ success: true, results });
+          break;
+        }
+
+        default:
+          sendResponse({ success: false, error: 'Unknown message type' });
+      }
+    } catch (error) {
+      sendResponse({ success: false, error: error.message });
+    }
+  })();
+
+  return true; // 非同期レスポンスのためチャネルを維持
+});
