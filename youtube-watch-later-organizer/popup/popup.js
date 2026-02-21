@@ -547,7 +547,8 @@ async function wlDomRemoveFn(videoId) {
 
   for (const item of items) {
     const text = item.textContent?.trim() ?? '';
-    if (text.includes('後で見る') || text.toLowerCase().includes('watch later') || text.includes('削除')) {
+    // 「後で見るから削除」「プレイリストから削除」にマッチ（「後で見る」単体は追加ボタンなので除外）
+    if (text.includes('から削除') || text.toLowerCase().includes('remove')) {
       item.click();
       await sleep(200);
       return { ok: true, step: 'clicked', text };
