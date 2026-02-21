@@ -30,7 +30,7 @@ async function youtubeAPI(endpoint, method = 'GET', params = {}, body = null) {
   const token = await getAuthToken(true);
   let url = `${API_BASE}/${endpoint}`;
 
-  if (method === 'GET' && Object.keys(params).length > 0) {
+  if (Object.keys(params).length > 0) {
     url += '?' + new URLSearchParams(params).toString();
   }
 
@@ -95,7 +95,7 @@ async function getUserPlaylists() {
 }
 
 async function addToPlaylist(videoId, playlistId) {
-  return youtubeAPI('playlistItems', 'POST', {}, {
+  return youtubeAPI('playlistItems', 'POST', { part: 'snippet' }, {
     snippet: {
       playlistId,
       resourceId: { kind: 'youtube#video', videoId },
