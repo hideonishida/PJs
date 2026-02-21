@@ -121,69 +121,8 @@ async function getWLPlaylistItemId(videoId) {
   }
 }
 
-/**
- * channels.list?part=contentDetails&mine=true から Watch Later の正式なプレイリストIDを取得する。
- * ドキュメント: "substitute the corresponding playlist ID from the channel information response"
- */
-async function getWatchLaterPlaylistId() {
-  const data = await youtubeAPI('channels', 'GET', {
-    part: 'contentDetails',
-    mine: true,
-  });
-  console.log('[sw] channels response:', JSON.stringify(data, null, 2));
-  const id = data.items?.[0]?.contentDetails?.relatedPlaylists?.watchLater ?? 'WL';
-  console.log('[sw] watchLater playlist ID:', id);
-  return id;
-}
-
-/**
- * Watch Later の動画を YouTube API で取得する（最大 maxResults 件）。
- * 1. channels.list で Watch Later playlist ID を取得
- * 2. playlistItems.list で動画リストを取得
- * 3. videos.list で duration を一括取得
- */
-async function getWatchLaterVideos(maxResults = 50) {
-  const watchLaterId = await getWatchLaterPlaylistId();
-
-  const data = await youtubeAPI('playlistItems', 'GET', {
-    part: 'snippet',
-    playlistId: watchLaterId,
-    maxResults,
-  });
-  console.log('[sw] playlistItems response: totalResults=', data.pageInfo?.totalResults, 'items=', data.items?.length ?? 0);
-
-  const items = data.items ?? [];
-  if (items.length === 0) return [];
-
-  // duration を一括取得
-  const videoIds = items.map((item) => item.snippet.resourceId.videoId).join(',');
-  const videoData = await youtubeAPI('videos', 'GET', {
-    part: 'contentDetails',
-    id: videoIds,
-  });
-
-  const durationMap = {};
-  (videoData.items ?? []).forEach((v) => {
-    durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
-  });
-
-  return items.map((item) => {
-    const videoId = item.snippet.resourceId.videoId;
-    const durationSeconds = durationMap[videoId] ?? 0;
-    return {
-      videoId,
-      playlistItemId: item.id,
-      title: item.snippet.title,
-      channelName: item.snippet.videoOwnerChannelTitle ?? item.snippet.channelTitle ?? '',
-      durationSeconds,
-      durationStr: formatDuration(durationSeconds),
-      thumbnail:
-        item.snippet.thumbnails?.medium?.url ??
-        `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-    };
-  });
-}
+// Watch Later は YouTube Data API が非対応（channels.list の relatedPlaylists に watchLater が含まれない）。
+// WL の取得は popup.js の chrome.scripting.executeScript で DOM スクレイピングする。
 
 // ─────────────────────────────────────────
 // Rules
@@ -328,12 +267,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'GET_PLAYLISTS': {
           const playlists = await getUserPlaylists();
           sendResponse({ success: true, playlists });
-          break;
-        }
-
-        case 'GET_WATCH_LATER': {
-          const videos = await getWatchLaterVideos(message.maxResults ?? 50);
-          sendResponse({ success: true, videos });
           break;
         }
 

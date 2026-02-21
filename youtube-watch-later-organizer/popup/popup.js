@@ -12,6 +12,66 @@ function queryWLTabs() {
   });
 }
 
+/**
+ * WL タブに直接注入するスクレイピング関数。
+ * chrome.scripting.executeScript で実行するため外部変数を参照できない（完全自己完結）。
+ */
+function wlScraperFn(maxResults) {
+  function parseDuration(str) {
+    if (!str) return 0;
+    const parts = str.trim().split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parseInt(parts[0], 10) || 0;
+  }
+
+  function extractVideoId(url) {
+    const m = (url ?? '').match(/[?&]v=([^&]+)/);
+    return m ? m[1] : null;
+  }
+
+  const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
+  if (renderers.length === 0) {
+    return { success: false, error: 'まだ動画が読み込まれていません。ページをスクロールしてから再試行してください。' };
+  }
+
+  const videos = [];
+  const limit = maxResults > 0 ? Math.min(maxResults, renderers.length) : renderers.length;
+
+  for (let i = 0; i < limit; i++) {
+    const renderer = renderers[i];
+    try {
+      const titleEl = renderer.querySelector('#video-title');
+      const title = titleEl?.textContent?.trim() ?? '';
+      const videoId = extractVideoId(titleEl?.href ?? '');
+      if (!videoId) continue;
+
+      const channelEl =
+        renderer.querySelector('.ytd-channel-name a') ??
+        renderer.querySelector('#channel-name a') ??
+        renderer.querySelector('yt-formatted-string.ytd-channel-name');
+      const channelName = channelEl?.textContent?.trim() ?? '';
+
+      const durationEl =
+        renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span#text') ??
+        renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span') ??
+        renderer.querySelector('.ytd-thumbnail-overlay-time-status-renderer');
+      const durationStr = durationEl?.textContent?.trim() ?? '0:00';
+      const durationSeconds = parseDuration(durationStr);
+
+      const thumbEl = renderer.querySelector('img.yt-core-image');
+      const thumbnail = thumbEl?.src?.startsWith('http')
+        ? thumbEl.src
+        : `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+      videos.push({ videoId, title, channelName, durationSeconds, durationStr, thumbnail,
+        url: `https://www.youtube.com/watch?v=${videoId}` });
+    } catch (_) { /* skip */ }
+  }
+
+  return { success: true, videos, total: renderers.length };
+}
+
 // ─────────────────────────────────────────
 // State
 // ─────────────────────────────────────────
@@ -169,21 +229,47 @@ async function loadWatchLater() {
   setStatus('Watch Later を読み込み中...', 'info');
   el.loadBtn.disabled = true;
 
-  const res = await bg({ type: 'GET_WATCH_LATER', maxResults: PAGE_SIZE });
+  const tabs = await queryWLTabs();
+  if (tabs.length === 0) {
+    setStatus('Watch Later ページが開かれていません', 'warning');
+    el.openWLBtn.classList.remove('hidden');
+    el.loadBtn.disabled = false;
+    return false;
+  }
+  el.openWLBtn.classList.add('hidden');
 
-  if (!res.success) {
-    setStatus(res.error ?? '読み込みに失敗しました', 'error');
+  try {
+    // sendMessage ではなく executeScript で直接注入する。
+    // 拡張機能リロード前に開かれていたタブでも確実に動作する。
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: wlScraperFn,
+      args: [PAGE_SIZE],
+    });
+
+    const res = results[0].result;
+    if (!res.success) {
+      setStatus(res.error ?? '読み込みに失敗しました', 'error');
+      el.loadBtn.disabled = false;
+      return false;
+    }
+
+    state.videos = res.videos;
+    state.displayedCount = PAGE_SIZE;
+    state.selectedVideos.clear();
+    const totalLabel = res.total > res.videos.length
+      ? `${res.videos.length} / ${res.total} 件`
+      : `${res.videos.length} 件`;
+    el.videoBadge.textContent = totalLabel;
+    el.videoBadge.classList.remove('hidden');
+    setStatus(`${res.videos.length} 件の動画を読み込みました`, 'success');
+    renderVideoList();
+  } catch (e) {
+    setStatus('読み込みエラー: ' + e.message, 'error');
     el.loadBtn.disabled = false;
     return false;
   }
 
-  state.videos = res.videos;
-  state.displayedCount = PAGE_SIZE;
-  state.selectedVideos.clear();
-  el.videoBadge.textContent = `${state.videos.length} 件`;
-  el.videoBadge.classList.remove('hidden');
-  setStatus(`${state.videos.length} 件の動画を読み込みました`, 'success');
-  renderVideoList();
   el.loadBtn.disabled = false;
   return true;
 }
