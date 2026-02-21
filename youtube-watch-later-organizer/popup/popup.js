@@ -169,45 +169,21 @@ async function loadWatchLater() {
   setStatus('Watch Later を読み込み中...', 'info');
   el.loadBtn.disabled = true;
 
-  const tabs = await queryWLTabs();
+  const res = await bg({ type: 'GET_WATCH_LATER', maxResults: PAGE_SIZE });
 
-  if (tabs.length === 0) {
-    setStatus('Watch Later ページが開かれていません', 'warning');
-    el.openWLBtn.classList.remove('hidden');
+  if (!res.success) {
+    setStatus(res.error ?? '読み込みに失敗しました', 'error');
     el.loadBtn.disabled = false;
     return false;
   }
 
-  el.openWLBtn.classList.add('hidden');
-
-  try {
-    const res = await chrome.tabs.sendMessage(tabs[0].id, {
-      type: 'SCRAPE_WATCH_LATER',
-      maxResults: PAGE_SIZE,
-    });
-
-    if (!res.success) {
-      setStatus(res.error ?? '読み込みに失敗しました', 'error');
-      el.loadBtn.disabled = false;
-      return false;
-    }
-
-    state.videos = res.videos;
-    state.displayedCount = PAGE_SIZE;
-    state.selectedVideos.clear();
-    const totalLabel = res.total > res.videos.length
-      ? `${res.videos.length} / ${res.total} 件`
-      : `${res.videos.length} 件`;
-    el.videoBadge.textContent = totalLabel;
-    el.videoBadge.classList.remove('hidden');
-    setStatus(`${res.videos.length} 件の動画を読み込みました`, 'success');
-    renderVideoList();
-  } catch (e) {
-    setStatus('通信エラー。WL ページをリロードして再試行してください。', 'error');
-    el.loadBtn.disabled = false;
-    return false;
-  }
-
+  state.videos = res.videos;
+  state.displayedCount = PAGE_SIZE;
+  state.selectedVideos.clear();
+  el.videoBadge.textContent = `${state.videos.length} 件`;
+  el.videoBadge.classList.remove('hidden');
+  setStatus(`${state.videos.length} 件の動画を読み込みました`, 'success');
+  renderVideoList();
   el.loadBtn.disabled = false;
   return true;
 }

@@ -122,13 +122,29 @@ async function getWLPlaylistItemId(videoId) {
 }
 
 /**
+ * channels.list?part=contentDetails&mine=true から Watch Later の正式なプレイリストIDを取得する。
+ * ドキュメント: "substitute the corresponding playlist ID from the channel information response"
+ */
+async function getWatchLaterPlaylistId() {
+  const data = await youtubeAPI('channels', 'GET', {
+    part: 'contentDetails',
+    mine: true,
+  });
+  return data.items?.[0]?.contentDetails?.relatedPlaylists?.watchLater ?? 'WL';
+}
+
+/**
  * Watch Later の動画を YouTube API で取得する（最大 maxResults 件）。
- * playlistItems.list で snippet を取得し、videos.list で duration を一括取得する。
+ * 1. channels.list で Watch Later playlist ID を取得
+ * 2. playlistItems.list で動画リストを取得
+ * 3. videos.list で duration を一括取得
  */
 async function getWatchLaterVideos(maxResults = 50) {
+  const watchLaterId = await getWatchLaterPlaylistId();
+
   const data = await youtubeAPI('playlistItems', 'GET', {
     part: 'snippet',
-    playlistId: 'WL',
+    playlistId: watchLaterId,
     maxResults,
   });
 
