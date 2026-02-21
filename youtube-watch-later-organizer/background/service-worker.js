@@ -57,6 +57,23 @@ async function youtubeAPI(endpoint, method = 'GET', params = {}, body = null) {
 // Playlist operations
 // ─────────────────────────────────────────
 
+/** ISO 8601 duration ("PT1H2M3S") を秒数に変換 */
+function parseISO8601Duration(iso) {
+  if (!iso) return 0;
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
+}
+
+/** 秒数を "H:MM:SS" / "M:SS" 形式に変換 */
+function formatDuration(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
 async function getUserPlaylists() {
   let items = [];
   let pageToken = null;
@@ -102,6 +119,50 @@ async function getWLPlaylistItemId(videoId) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Watch Later の動画を YouTube API で取得する（最大 maxResults 件）。
+ * playlistItems.list で snippet を取得し、videos.list で duration を一括取得する。
+ */
+async function getWatchLaterVideos(maxResults = 50) {
+  const data = await youtubeAPI('playlistItems', 'GET', {
+    part: 'snippet',
+    playlistId: 'WL',
+    maxResults,
+  });
+
+  const items = data.items ?? [];
+  if (items.length === 0) return [];
+
+  // duration を一括取得
+  const videoIds = items.map((item) => item.snippet.resourceId.videoId).join(',');
+  const videoData = await youtubeAPI('videos', 'GET', {
+    part: 'contentDetails',
+    id: videoIds,
+  });
+
+  const durationMap = {};
+  (videoData.items ?? []).forEach((v) => {
+    durationMap[v.id] = parseISO8601Duration(v.contentDetails.duration);
+  });
+
+  return items.map((item) => {
+    const videoId = item.snippet.resourceId.videoId;
+    const durationSeconds = durationMap[videoId] ?? 0;
+    return {
+      videoId,
+      playlistItemId: item.id,
+      title: item.snippet.title,
+      channelName: item.snippet.videoOwnerChannelTitle ?? item.snippet.channelTitle ?? '',
+      durationSeconds,
+      durationStr: formatDuration(durationSeconds),
+      thumbnail:
+        item.snippet.thumbnails?.medium?.url ??
+        `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+    };
+  });
 }
 
 // ─────────────────────────────────────────
@@ -247,6 +308,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'GET_PLAYLISTS': {
           const playlists = await getUserPlaylists();
           sendResponse({ success: true, playlists });
+          break;
+        }
+
+        case 'GET_WATCH_LATER': {
+          const videos = await getWatchLaterVideos(message.maxResults ?? 50);
+          sendResponse({ success: true, videos });
           break;
         }
 
