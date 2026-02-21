@@ -521,34 +521,42 @@ async function executeMoveVideos(videos, removeFromWL, label) {
 async function wlDomRemoveFn(videoId) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // 対象の renderer を探す
   const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
   let target = null;
   for (const r of renderers) {
     if (r.querySelector('#video-title')?.href?.includes(videoId)) { target = r; break; }
   }
-  if (!target) return false;
+  if (!target) return { ok: false, step: 'renderer_not_found' };
 
+  // 三点メニューボタン（ytd-menu-renderer 内を優先）
   const menuBtn =
-    target.querySelector('button[aria-label]') ??
-    target.querySelector('yt-icon-button#button') ??
-    target.querySelector('ytd-menu-renderer button');
-  if (!menuBtn) return false;
+    target.querySelector('ytd-menu-renderer button') ??
+    target.querySelector('yt-icon-button#button button') ??
+    target.querySelector('button[aria-label]');
+  if (!menuBtn) return { ok: false, step: 'menu_btn_not_found' };
 
   menuBtn.click();
-  await sleep(400);
+  await sleep(500);
 
-  const items = document.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
+  // メニュー項目を収集してログ用テキストも返す
+  const items = document.querySelectorAll(
+    'ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer, tp-yt-paper-item'
+  );
+  const itemTexts = Array.from(items).map((i) => i.textContent?.trim() ?? '');
+
   for (const item of items) {
     const text = item.textContent?.trim() ?? '';
     if (text.includes('後で見る') || text.toLowerCase().includes('watch later') || text.includes('削除')) {
       item.click();
       await sleep(200);
-      return true;
+      return { ok: true, step: 'clicked', text };
     }
   }
 
+  // 閉じる
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  return false;
+  return { ok: false, step: 'item_not_found', itemTexts };
 }
 
 async function domDeleteVideos(videoIds) {
@@ -557,11 +565,12 @@ async function domDeleteVideos(videoIds) {
 
   for (const videoId of videoIds) {
     try {
-      await chrome.scripting.executeScript({
+      const results = await chrome.scripting.executeScript({
         target: { tabId: tabs[0].id },
         func: wlDomRemoveFn,
         args: [videoId],
       });
+      console.log('[popup] wlDomRemove result:', videoId, results[0]?.result);
     } catch (e) {
       console.warn('[popup] wlDomRemove failed:', videoId, e.message);
     }
