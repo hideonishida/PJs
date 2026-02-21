@@ -139,6 +139,16 @@ function getRules() {
  * @param {{ title: string, channelName: string, durationSeconds: number }} video
  * @param {Array} rules
  */
+
+/** テキスト比較用の正規化: 全角→半角(NFKC)・空白統一・小文字化 */
+function normalizeText(str) {
+  return (str ?? '')
+    .normalize('NFKC')       // 全角英数字→半角、全角スペース→半角スペース等
+    .replace(/[\s\u00A0\u200B\uFEFF]+/g, ' ')  // あらゆる空白系文字を単一スペースに
+    .trim()
+    .toLowerCase();
+}
+
 function evaluateRules(video, rules) {
   for (const rule of rules) {
     if (!rule.enabled) continue;
@@ -148,10 +158,10 @@ function evaluateRules(video, rules) {
 
     switch (field) {
       case 'channelName':
-        fieldValue = (video.channelName ?? '').toLowerCase();
+        fieldValue = normalizeText(video.channelName);
         break;
       case 'title':
-        fieldValue = (video.title ?? '').toLowerCase();
+        fieldValue = normalizeText(video.title);
         break;
       case 'duration':
         fieldValue = video.durationSeconds ?? 0;
@@ -167,7 +177,7 @@ function evaluateRules(video, rules) {
       else if (operator === 'lt') matches = fieldValue < num;
       else if (operator === 'eq') matches = fieldValue === num;
     } else {
-      const lv = value.toLowerCase();
+      const lv = normalizeText(value);
       if (operator === 'contains') matches = fieldValue.includes(lv);
       else if (operator === 'equals') matches = fieldValue === lv;
       else if (operator === 'startsWith') matches = fieldValue.startsWith(lv);
