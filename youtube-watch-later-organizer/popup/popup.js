@@ -47,8 +47,11 @@ const el = {
 // Init
 // ─────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[popup] DOMContentLoaded');
   setupEventListeners();
+  console.log('[popup] setupEventListeners done, calling checkAuth...');
   await checkAuth();
+  console.log('[popup] checkAuth done');
 });
 
 // ─────────────────────────────────────────
@@ -76,8 +79,17 @@ function showMain() {
 }
 
 async function handleLogin() {
+  console.log('[popup] handleLogin called');
   setStatus('ログイン中...', 'info');
-  const res = await bg({ type: 'LOGIN' });
+  let res;
+  try {
+    res = await bg({ type: 'LOGIN' });
+  } catch (e) {
+    console.error('[popup] bg() threw:', e);
+    setStatus('ログインに失敗しました: ' + e.message, 'error');
+    return;
+  }
+  console.log('[popup] LOGIN response:', res);
   if (res.success) {
     showMain();
     await loadPlaylists();

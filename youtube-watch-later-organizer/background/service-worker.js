@@ -205,6 +205,7 @@ async function moveVideo(video, removeFromWL) {
 // ─────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  console.log('[sw] message received:', message.type);
   (async () => {
     try {
       switch (message.type) {
@@ -212,15 +213,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           try {
             await getAuthToken(false);
             sendResponse({ success: true, authenticated: true });
-          } catch {
+          } catch (e) {
+            console.log('[sw] GET_AUTH_STATUS not authenticated:', e.message);
             sendResponse({ success: true, authenticated: false });
           }
           break;
         }
 
         case 'LOGIN': {
-          await getAuthToken(true);
-          sendResponse({ success: true });
+          console.log('[sw] LOGIN: calling getAuthToken(true)');
+          try {
+            const token = await getAuthToken(true);
+            console.log('[sw] LOGIN: token obtained', token ? 'ok' : 'null');
+            sendResponse({ success: true });
+          } catch (e) {
+            console.error('[sw] LOGIN: getAuthToken failed:', e.message);
+            sendResponse({ success: false, error: e.message });
+          }
           break;
         }
 
