@@ -492,7 +492,11 @@ async function executeMoveVideos(videos, removeFromWL, label) {
   // API で WL 削除できなかった動画を DOM 経由で削除
   const needDOM = res.results.filter((r) => r.needsContentScript);
   if (needDOM.length > 0 && removeFromWL) {
-    await domDeleteVideos(needDOM.map((r) => r.videoId));
+    try {
+      await domDeleteVideos(needDOM.map((r) => r.videoId));
+    } catch (e) {
+      console.warn('[popup] domDeleteVideos error:', e.message);
+    }
   }
 
   // 成功した動画を state から除去
@@ -513,12 +517,54 @@ async function executeMoveVideos(videos, removeFromWL, label) {
   disableActions(false);
 }
 
+/** WL タブに直接注入する DOM 削除関数（完全自己完結） */
+async function wlDomRemoveFn(videoId) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
+  let target = null;
+  for (const r of renderers) {
+    if (r.querySelector('#video-title')?.href?.includes(videoId)) { target = r; break; }
+  }
+  if (!target) return false;
+
+  const menuBtn =
+    target.querySelector('button[aria-label]') ??
+    target.querySelector('yt-icon-button#button') ??
+    target.querySelector('ytd-menu-renderer button');
+  if (!menuBtn) return false;
+
+  menuBtn.click();
+  await sleep(400);
+
+  const items = document.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
+  for (const item of items) {
+    const text = item.textContent?.trim() ?? '';
+    if (text.includes('後で見る') || text.toLowerCase().includes('watch later') || text.includes('削除')) {
+      item.click();
+      await sleep(200);
+      return true;
+    }
+  }
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  return false;
+}
+
 async function domDeleteVideos(videoIds) {
   const tabs = await queryWLTabs();
   if (tabs.length === 0) return;
 
   for (const videoId of videoIds) {
-    await chrome.tabs.sendMessage(tabs[0].id, { type: 'REMOVE_FROM_WL_DOM', videoId });
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: wlDomRemoveFn,
+        args: [videoId],
+      });
+    } catch (e) {
+      console.warn('[popup] wlDomRemove failed:', videoId, e.message);
+    }
     await sleep(400);
   }
 }
