@@ -289,6 +289,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
               const result = await moveVideo(video, removeFromWL);
               results.push(result);
             } catch (error) {
+              console.error('[sw] moveVideo failed:', video.videoId, error.message);
               results.push({
                 videoId: video.videoId,
                 success: false,

@@ -502,10 +502,12 @@ async function executeMoveVideos(videos, removeFromWL, label) {
   renderVideoList();
   el.videoBadge.textContent = `${state.videos.length} 件`;
 
-  const ok  = res.results.filter((r) => r.success).length;
-  const ng  = res.results.filter((r) => !r.success).length;
+  const ok      = res.results.filter((r) => r.success).length;
+  const failed  = res.results.filter((r) => !r.success);
+  const ng      = failed.length;
+  const firstErr = failed[0]?.error ?? '';
   const msg = ng > 0
-    ? `${ok} 件移動、${ng} 件失敗`
+    ? `${ok} 件移動、${ng} 件失敗: ${firstErr}`
     : `${ok} 件を${label}に移動しました`;
   setStatus(msg, ng > 0 ? 'warning' : 'success');
   disableActions(false);
