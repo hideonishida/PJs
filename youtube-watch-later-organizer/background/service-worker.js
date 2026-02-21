@@ -194,7 +194,10 @@ function evaluateRules(video, rules) {
  * @param {boolean} removeFromWL
  */
 async function moveVideo(video, removeFromWL) {
+  console.log('[sw] moveVideo start:', video.videoId, '→', video.targetPlaylistId);
+
   await addToPlaylist(video.videoId, video.targetPlaylistId);
+  console.log('[sw] addToPlaylist done');
 
   if (!removeFromWL) {
     return { videoId: video.videoId, success: true, wlRemoved: false };
@@ -202,16 +205,20 @@ async function moveVideo(video, removeFromWL) {
 
   // playlistItemId が既知であれば API で削除
   let itemId = video.playlistItemId ?? null;
+  console.log('[sw] playlistItemId from video:', itemId);
+
   if (!itemId) {
     itemId = await getWLPlaylistItemId(video.videoId);
+    console.log('[sw] getWLPlaylistItemId result:', itemId);
   }
 
   if (itemId) {
+    console.log('[sw] removeFromWatchLater:', itemId);
     await removeFromWatchLater(itemId);
     return { videoId: video.videoId, success: true, wlRemoved: true };
   }
 
-  // API での WL 削除が不可能 → Content Script 経由で削除する必要あり
+  console.log('[sw] needsContentScript (WL API not supported)');
   return {
     videoId: video.videoId,
     success: true,
