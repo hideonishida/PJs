@@ -38,7 +38,7 @@ function isWatchLaterPage() {
   return location.href.includes('list=WL') || location.href.includes('/feed/watch_later');
 }
 
-function scrapeWatchLaterVideos() {
+function scrapeWatchLaterVideos(maxResults = 0) {
   if (!isWatchLaterPage()) {
     return { success: false, error: 'このページは Watch Later ではありません' };
   }
@@ -49,8 +49,10 @@ function scrapeWatchLaterVideos() {
   }
 
   const videos = [];
+  const limit = maxResults > 0 ? maxResults : renderers.length;
 
-  renderers.forEach((renderer) => {
+  for (let i = 0; i < Math.min(limit, renderers.length); i++) {
+    const renderer = renderers[i];
     try {
       // タイトル & URL
       const titleEl = renderer.querySelector('#video-title');
@@ -93,9 +95,9 @@ function scrapeWatchLaterVideos() {
     } catch (e) {
       console.warn('[WL Organizer] Failed to parse renderer:', e);
     }
-  });
+  }
 
-  return { success: true, videos };
+  return { success: true, videos, total: renderers.length };
 }
 
 // ─────────────────────────────────────────
@@ -161,7 +163,7 @@ async function removeFromWLviaDOM(videoId) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'SCRAPE_WATCH_LATER') {
-    sendResponse(scrapeWatchLaterVideos());
+    sendResponse(scrapeWatchLaterVideos(message.maxResults ?? 0));
     return;
   }
 
