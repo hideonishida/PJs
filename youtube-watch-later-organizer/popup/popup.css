@@ -123,6 +123,8 @@ body {
 ───────────────────────────────────────── */
 .video-list { border-bottom: 1px solid #f0f0f0; }
 
+.load-more-btn { margin: 8px 14px; width: calc(100% - 28px); }
+
 .video-item {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 14px;

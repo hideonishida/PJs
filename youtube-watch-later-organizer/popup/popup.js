@@ -1,5 +1,17 @@
 'use strict';
 
+const PAGE_SIZE = 50;
+
+// Watch Later タブを両URLパターンで検索する
+function queryWLTabs() {
+  return chrome.tabs.query({
+    url: [
+      'https://www.youtube.com/playlist?list=WL*',
+      'https://www.youtube.com/feed/watch_later*',
+    ],
+  });
+}
+
 // ─────────────────────────────────────────
 // State
 // ─────────────────────────────────────────
@@ -9,6 +21,7 @@ const state = {
   playlists: [],
   selectedVideos: new Set(),
   previewResult: [],
+  displayedCount: PAGE_SIZE,
 };
 
 // ─────────────────────────────────────────
@@ -156,7 +169,7 @@ async function loadWatchLater() {
   setStatus('Watch Later を読み込み中...', 'info');
   el.loadBtn.disabled = true;
 
-  const tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/playlist?list=WL*' });
+  const tabs = await queryWLTabs();
 
   if (tabs.length === 0) {
     setStatus('Watch Later ページが開かれていません', 'warning');
@@ -177,6 +190,7 @@ async function loadWatchLater() {
     }
 
     state.videos = res.videos;
+    state.displayedCount = PAGE_SIZE;
     state.selectedVideos.clear();
     el.videoBadge.textContent = `${state.videos.length} 件`;
     el.videoBadge.classList.remove('hidden');
@@ -205,7 +219,22 @@ function renderVideoList() {
   }
 
   const frag = document.createDocumentFragment();
-  state.videos.forEach((v) => frag.appendChild(createVideoItem(v)));
+  const visible = state.videos.slice(0, state.displayedCount);
+  visible.forEach((v) => frag.appendChild(createVideoItem(v)));
+
+  const remaining = state.videos.length - state.displayedCount;
+  if (remaining > 0) {
+    const next = Math.min(PAGE_SIZE, remaining);
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary btn-full load-more-btn';
+    btn.textContent = `次の ${next} 件を表示（残り ${remaining} 件）`;
+    btn.addEventListener('click', () => {
+      state.displayedCount += PAGE_SIZE;
+      renderVideoList();
+    });
+    frag.appendChild(btn);
+  }
+
   el.videoList.appendChild(frag);
   updateMoveBtn();
   updateSelectAllState();
@@ -236,6 +265,7 @@ function createVideoItem(video) {
   `;
 
   const cb = div.querySelector('.video-checkbox');
+  cb.checked = state.selectedVideos.has(video.videoId);
   cb.addEventListener('change', () => {
     if (cb.checked) state.selectedVideos.add(video.videoId);
     else            state.selectedVideos.delete(video.videoId);
@@ -253,11 +283,14 @@ function createVideoItem(video) {
 
 function handleSelectAll() {
   const checked = el.selectAll.checked;
+  // 全動画（表示外も含む）を対象に選択状態を更新
+  state.videos.forEach((v) => {
+    if (checked) state.selectedVideos.add(v.videoId);
+    else         state.selectedVideos.delete(v.videoId);
+  });
+  // 現在表示中のチェックボックスに反映
   document.querySelectorAll('.video-checkbox').forEach((cb) => {
     cb.checked = checked;
-    const vid = cb.dataset.videoId;
-    if (checked) state.selectedVideos.add(vid);
-    else         state.selectedVideos.delete(vid);
   });
   updateMoveBtn();
 }
@@ -411,7 +444,7 @@ async function executeMoveVideos(videos, removeFromWL, label) {
 }
 
 async function domDeleteVideos(videoIds) {
-  const tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/playlist?list=WL*' });
+  const tabs = await queryWLTabs();
   if (tabs.length === 0) return;
 
   for (const videoId of videoIds) {

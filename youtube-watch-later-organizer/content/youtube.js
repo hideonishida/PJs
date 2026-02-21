@@ -34,8 +34,12 @@ function sleep(ms) {
 // スクレイピング
 // ─────────────────────────────────────────
 
+function isWatchLaterPage() {
+  return location.href.includes('list=WL') || location.href.includes('/feed/watch_later');
+}
+
 function scrapeWatchLaterVideos() {
-  if (!location.href.includes('list=WL')) {
+  if (!isWatchLaterPage()) {
     return { success: false, error: 'このページは Watch Later ではありません' };
   }
 
@@ -103,7 +107,7 @@ function scrapeWatchLaterVideos() {
  * API が WL の playlistItemId を返さない場合のフォールバック。
  */
 async function removeFromWLviaDOM(videoId) {
-  if (!location.href.includes('list=WL')) return false;
+  if (!isWatchLaterPage()) return false;
 
   // 対象の renderer を探す
   const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
