@@ -130,7 +130,10 @@ async function getWatchLaterPlaylistId() {
     part: 'contentDetails',
     mine: true,
   });
-  return data.items?.[0]?.contentDetails?.relatedPlaylists?.watchLater ?? 'WL';
+  console.log('[sw] channels response:', JSON.stringify(data, null, 2));
+  const id = data.items?.[0]?.contentDetails?.relatedPlaylists?.watchLater ?? 'WL';
+  console.log('[sw] watchLater playlist ID:', id);
+  return id;
 }
 
 /**
@@ -147,6 +150,7 @@ async function getWatchLaterVideos(maxResults = 50) {
     playlistId: watchLaterId,
     maxResults,
   });
+  console.log('[sw] playlistItems response: totalResults=', data.pageInfo?.totalResults, 'items=', data.items?.length ?? 0);
 
   const items = data.items ?? [];
   if (items.length === 0) return [];
