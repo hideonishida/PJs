@@ -1,6 +1,6 @@
 'use strict';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 
 // Watch Later タブを両URLパターンで検索する
 function queryWLTabs() {
