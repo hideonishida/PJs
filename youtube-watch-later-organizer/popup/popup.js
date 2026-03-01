@@ -499,13 +499,6 @@ async function executeMoveVideos(videos, removeFromWL, label) {
     }
   }
 
-  // 成功した動画を state から除去
-  const movedIds = new Set(res.results.filter((r) => r.success).map((r) => r.videoId));
-  state.videos = state.videos.filter((v) => !movedIds.has(v.videoId));
-  state.selectedVideos.clear();
-  renderVideoList();
-  el.videoBadge.textContent = `${state.videos.length} 件`;
-
   const ok      = res.results.filter((r) => r.success).length;
   const failed  = res.results.filter((r) => !r.success);
   const ng      = failed.length;
@@ -514,12 +507,43 @@ async function executeMoveVideos(videos, removeFromWL, label) {
     ? `${ok} 件移動、${ng} 件失敗: ${firstErr}`
     : `${ok} 件を${label}に移動しました`;
   setStatus(msg, ng > 0 ? 'warning' : 'success');
+
+  // WL を再スクレイピングしてリストを補充（PAGE_SIZE 件まで再取得）
+  state.selectedVideos.clear();
+  await sleep(1500); // DOM 削除がページに反映されるのを待つ
+  try {
+    const tabs = await queryWLTabs();
+    if (tabs.length > 0) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: wlScraperFn,
+        args: [PAGE_SIZE],
+      });
+      const scrapeRes = results[0].result;
+      if (scrapeRes.success) {
+        state.videos = scrapeRes.videos;
+        state.displayedCount = PAGE_SIZE;
+        const totalLabel = scrapeRes.total > scrapeRes.videos.length
+          ? `${scrapeRes.videos.length} / ${scrapeRes.total} 件`
+          : `${scrapeRes.videos.length} 件`;
+        el.videoBadge.textContent = totalLabel;
+        renderVideoList();
+      }
+    }
+  } catch (e) {
+    console.warn('[popup] WL refresh after move failed:', e.message);
+  }
+
   disableActions(false);
 }
 
 /** WL タブに直接注入する DOM 削除関数（完全自己完結） */
 async function wlDomRemoveFn(videoId) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // 前回のポップアップが残っている場合に閉じる
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(300);
 
   // 対象の renderer を探す
   const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
@@ -537,7 +561,7 @@ async function wlDomRemoveFn(videoId) {
   if (!menuBtn) return { ok: false, step: 'menu_btn_not_found' };
 
   menuBtn.click();
-  await sleep(500);
+  await sleep(800);
 
   // メニュー項目を収集してログ用テキストも返す
   const items = document.querySelectorAll(
@@ -550,13 +574,13 @@ async function wlDomRemoveFn(videoId) {
     // 「後で見るから削除」「プレイリストから削除」にマッチ（「後で見る」単体は追加ボタンなので除外）
     if (text.includes('から削除') || text.toLowerCase().includes('remove')) {
       item.click();
-      await sleep(200);
+      await sleep(600);
       return { ok: true, step: 'clicked', text };
     }
   }
 
   // 閉じる
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   return { ok: false, step: 'item_not_found', itemTexts };
 }
 
@@ -575,7 +599,7 @@ async function domDeleteVideos(videoIds) {
     } catch (e) {
       console.warn('[popup] wlDomRemove failed:', videoId, e.message);
     }
-    await sleep(400);
+    await sleep(800);
   }
 }
 
