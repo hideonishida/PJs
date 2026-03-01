@@ -30,46 +30,62 @@ function wlScraperFn(maxResults) {
     return m ? m[1] : null;
   }
 
-  const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
-  if (renderers.length === 0) {
-    return { success: false, error: 'まだ動画が読み込まれていません。ページをスクロールしてから再試行してください。' };
-  }
+  // executeScript は Promise の解決値をそのまま結果として扱う
+  return (async () => {
+    // maxResults 件の renderer が揃うまでスクロールして待機（YouTube の遅延レンダリング対策）
+    if (maxResults > 0) {
+      for (let i = 0; i < 8; i++) {
+        const count = document.querySelectorAll('ytd-playlist-video-renderer').length;
+        if (count >= maxResults) break;
+        window.scrollBy(0, 3000);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      // 先頭に戻して renderer インデックスを安定させる
+      window.scrollTo(0, 0);
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
-  const videos = [];
-  const limit = maxResults > 0 ? Math.min(maxResults, renderers.length) : renderers.length;
+    const renderers = document.querySelectorAll('ytd-playlist-video-renderer');
+    if (renderers.length === 0) {
+      return { success: false, error: 'まだ動画が読み込まれていません。ページをスクロールしてから再試行してください。' };
+    }
 
-  for (let i = 0; i < limit; i++) {
-    const renderer = renderers[i];
-    try {
-      const titleEl = renderer.querySelector('#video-title');
-      const title = titleEl?.textContent?.trim() ?? '';
-      const videoId = extractVideoId(titleEl?.href ?? '');
-      if (!videoId) continue;
+    const videos = [];
+    const limit = maxResults > 0 ? Math.min(maxResults, renderers.length) : renderers.length;
 
-      const channelEl =
-        renderer.querySelector('.ytd-channel-name a') ??
-        renderer.querySelector('#channel-name a') ??
-        renderer.querySelector('yt-formatted-string.ytd-channel-name');
-      const channelName = channelEl?.textContent?.trim() ?? '';
+    for (let i = 0; i < limit; i++) {
+      const renderer = renderers[i];
+      try {
+        const titleEl = renderer.querySelector('#video-title');
+        const title = titleEl?.textContent?.trim() ?? '';
+        const videoId = extractVideoId(titleEl?.href ?? '');
+        if (!videoId) continue;
 
-      const durationEl =
-        renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span#text') ??
-        renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span') ??
-        renderer.querySelector('.ytd-thumbnail-overlay-time-status-renderer');
-      const durationStr = durationEl?.textContent?.trim() ?? '0:00';
-      const durationSeconds = parseDuration(durationStr);
+        const channelEl =
+          renderer.querySelector('.ytd-channel-name a') ??
+          renderer.querySelector('#channel-name a') ??
+          renderer.querySelector('yt-formatted-string.ytd-channel-name');
+        const channelName = channelEl?.textContent?.trim() ?? '';
 
-      const thumbEl = renderer.querySelector('img.yt-core-image');
-      const thumbnail = thumbEl?.src?.startsWith('http')
-        ? thumbEl.src
-        : `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+        const durationEl =
+          renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span#text') ??
+          renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer span') ??
+          renderer.querySelector('.ytd-thumbnail-overlay-time-status-renderer');
+        const durationStr = durationEl?.textContent?.trim() ?? '0:00';
+        const durationSeconds = parseDuration(durationStr);
 
-      videos.push({ videoId, title, channelName, durationSeconds, durationStr, thumbnail,
-        url: `https://www.youtube.com/watch?v=${videoId}` });
-    } catch (_) { /* skip */ }
-  }
+        const thumbEl = renderer.querySelector('img.yt-core-image');
+        const thumbnail = thumbEl?.src?.startsWith('http')
+          ? thumbEl.src
+          : `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
-  return { success: true, videos, total: renderers.length };
+        videos.push({ videoId, title, channelName, durationSeconds, durationStr, thumbnail,
+          url: `https://www.youtube.com/watch?v=${videoId}` });
+      } catch (_) { /* skip */ }
+    }
+
+    return { success: true, videos, total: renderers.length };
+  })();
 }
 
 // ─────────────────────────────────────────
